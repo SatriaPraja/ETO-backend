@@ -34,6 +34,7 @@ const ROLE_DETAILS_MAP: Record<UserRole, { id: string; name: UserRole; desc: str
   },
 }
 
+
 export class AuthService {
   constructor(private userRepo: UserRepository) {}
 
@@ -164,11 +165,11 @@ export class AuthService {
     }
   }
 
-  // 5. Get Profile (Cek Redis Cache terlebih dahulu)
+  // 5. Get Profile (Cek Redis Cache terlebih dahulu & Kembalikan Opsi Available Roles Lengkap)
   async getProfile(userId: string, currentActiveRole: UserRole) {
     let userPayload: any = null
 
-    // Hit cache Redis
+    // Cek cache Redis
     const cachedUser = await redis.get(`user:profile:${userId}`)
     if (cachedUser) {
       userPayload = JSON.parse(cachedUser)
@@ -191,7 +192,23 @@ export class AuthService {
       await redis.set(`user:profile:${dbUser.id}`, JSON.stringify(userPayload), 'EX', 28800)
     }
 
-    const availableRoles = [ROLE_DETAILS_MAP[currentActiveRole || 'OFFICIAL_BOOKER']]
+    // Ambil data user dari database untuk mengetahui base role aslinya
+    const dbUser = await this.userRepo.findById(userId)
+    const baseRole = (dbUser?.role as UserRole) || currentActiveRole
+
+    const availableRoles = [ROLE_DETAILS_MAP[baseRole]]
+
+    if (baseRole === 'SUPER_ADMIN') {
+      availableRoles.push(
+        ROLE_DETAILS_MAP['OFFICIAL_BOOKER'],
+        ROLE_DETAILS_MAP['APPROVER_KAKANWIL'],
+        ROLE_DETAILS_MAP['ADMIN_TRAVEL_KP'],
+        ROLE_DETAILS_MAP['ASDEP_KEUANGAN']
+      )
+    } else if (baseRole !== 'OFFICIAL_BOOKER') {
+      availableRoles.push(ROLE_DETAILS_MAP['OFFICIAL_BOOKER'])
+    }
+
     return {
       user: userPayload,
       availableRoles,
