@@ -12,21 +12,6 @@ const COOKIE_OPTIONS = {
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  register = async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const result = await this.authService.register(req.body)
-      return res.status(201).json({
-        success: true,
-        message: 'Pengguna baru berhasil didaftarkan.',
-        data: result,
-      })
-    } catch (error: any) {
-      return res.status(400).json({
-        success: false,
-        message: error.message || 'Gagal mendaftarkan pengguna.',
-      })
-    }
-  }
 
   login = async (req: AuthenticatedRequest, res: Response) => {
     try {

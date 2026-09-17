@@ -24,25 +24,7 @@ export const authSchemas = {
       password: { type: 'string', description: 'Password akun' },
     },
   },
-  RegisterRequest: {
-    type: 'object',
-    required: ['npk', 'namaLengkap', 'email', 'password', 'jabatan', 'golongan', 'unitKerjaKode', 'unitKerjaNama', 'role'],
-    properties: {
-      npk: { type: 'string', example: '10000001', description: 'Nomor Pokok Karyawan' },
-      namaLengkap: { type: 'string', example: 'Super Admin E-TO' },
-      email: { type: 'string', example: 'super.admin@bpjsketenagakerjaan.go.id' },
-      password: { type: 'string', example: 'Password123!' },
-      jabatan: { type: 'string', example: 'System Administrator' },
-      golongan: { type: 'string', example: 'IV/E' },
-      unitKerjaKode: { type: 'string', example: 'KP-TI' },
-      unitKerjaNama: { type: 'string', example: 'Kantor Pusat - TI & Transformasi Digital' },
-      role: { 
-        type: 'string', 
-        enum: ['OFFICIAL_BOOKER', 'APPROVER_KAKANWIL', 'ADMIN_TRAVEL_KP', 'ASDEP_KEUANGAN', 'SUPER_ADMIN'],
-        example: 'SUPER_ADMIN' 
-      },
-    },
-  },
+ 
   SwitchRoleRequest: {
     type: 'object',
     required: ['targetRoleId'],
@@ -76,4 +58,5 @@ export const authSchemas = {
       description: { type: 'string', example: 'Pembuat Travel Order; hanya melihat & mengelola order sendiri.' },
     },
   },
+  
 }

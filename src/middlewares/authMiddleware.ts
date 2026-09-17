@@ -12,7 +12,12 @@ export interface JWTPayload {
   exp?: number
 }
 
-export interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest<
+  P = Record<string, any>,
+  ResBody = any,
+  ReqBody = any,
+  ReqQuery = any
+> extends Request<P, ResBody, ReqBody, ReqQuery> {
   user?: JWTPayload
   rawToken?: string
 }
@@ -52,5 +57,29 @@ export const authenticateJWT = async (
       success: false,
       message: 'Sesi tidak valid atau telah kedaluwarsa.',
     })
+  }
+}
+
+/**
+ * Middleware Otorisasi Berbasis Peran (RBAC)
+ * Memeriksa apakah activeRole pengguna yang terautentikasi sesuai dengan daftar peran yang diizinkan.
+ */
+export const authorizeRoles = (...allowedRoles: UserRole[]) => {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user || !req.user.activeRole) {
+      return res.status(401).json({
+        success: false,
+        message: 'Akses ditolak. Pengguna belum teridentifikasi.',
+      })
+    }
+
+    if (!allowedRoles.includes(req.user.activeRole)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak. Anda tidak memiliki hak akses untuk fitur ini.',
+      })
+    }
+
+    next()
   }
 }

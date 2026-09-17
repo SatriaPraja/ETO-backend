@@ -15,7 +15,7 @@ const authController = new AuthController(authService)
 
 // Public Endpoints
 router.post('/login', validateRequest(loginSchema), authController.login)
-router.post('/register', validateRequest(registerSchema), authController.register)
+
 
 // Authenticated Endpoints
 router.post('/logout', authenticateJWT, authController.logout)

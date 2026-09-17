@@ -1,8 +1,8 @@
-export const registerDoc = {
+export const createUserDoc = {
   post: {
     summary: 'Register User Baru',
     description: 'Mendaftarkan akun pengguna baru ke dalam database.',
-    tags: ['Authentication'],
+    tags: ['User Management'],
     requestBody: {
       required: true,
       content: {

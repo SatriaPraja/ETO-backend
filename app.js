@@ -4,7 +4,11 @@ import cookieParser from 'cookie-parser'
 import { apiReference } from '@scalar/express-api-reference'
 import { pool } from './src/config/database.ts'
 import './src/config/redis.ts' // Menyalakan Redis Connection
+
+// 1. Import Routes
 import authRoutes from './src/routes/authRoutes.ts'
+import userRoutes from './src/routes/userRoutes.ts' // 🟢 Tambahkan ini
+
 import { swaggerSpec } from './src/docs/index.ts'
 
 const app = express()
@@ -43,7 +47,7 @@ app.get('/health', async (req, res) => {
         serverTime: dbResult.rows[0].current_time,
       },
     })
-  } catch (error) {
+  } catch (error) { // 👈 Hapus ': any' di sini
     return res.status(500).json({
       status: 'ERROR',
       message: 'Gagal terhubung ke database',
@@ -54,7 +58,8 @@ app.get('/health', async (req, res) => {
 
 app.get('/', (req, res) => res.redirect('/docs'))
 
-// Mount Auth Routes
+// 2. Mount API Routes
 app.use('/api/auth', authRoutes)
+app.use('/api/users', userRoutes) // 🟢 Mount rute manajemen pengguna disini
 
 export default app
