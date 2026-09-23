@@ -9,7 +9,10 @@ export interface JWTPayload {
   userId: string
   npk: string
   activeRole: UserRole
-  exp?: number
+  unitKerjaKode?: string  
+  unitKerjaNama?: string  
+  iat?: number 
+  exp?: number 
 }
 
 export interface AuthenticatedRequest<

@@ -5,15 +5,13 @@ async function seedUsers() {
   const client = await pool.connect();
 
   try {
-    console.log(
-      "⏳ Memulai proses seeding data users dummy (tanpa nama asli)...",
-    );
+    console.log("⏳ Memulai proses seeding data users & otorisasi roles...");
 
-    // Hash password default untuk semua user pengujian ("Password123!")
+    // 1. Hash password default ("Password123!")
     const defaultPassword = "Password123!";
     const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
-    // Data sampel pengguna menggunakan nama samaran / anonim
+    // 2. Data dummy pengguna yang disesuaikan dengan skema PostgreSQL terbaru
     const dummyUsers = [
       {
         npk: "982144",
@@ -24,7 +22,8 @@ async function seedUsers() {
         unitKode: "KP-UMUM-SDM",
         unitNama: "Kantor Pusat - Divisi Umum & SDM",
         initials: "BT",
-        role: "OFFICIAL_BOOKER",
+        noHp: "081234567890",
+        roleCode: "OFFICIAL_BOOKER",
       },
       {
         npk: "88102910",
@@ -35,7 +34,8 @@ async function seedUsers() {
         unitKode: "KANWIL-JATIM",
         unitNama: "Kantor Wilayah Jawa Timur",
         initials: "PT",
-        role: "APPROVER_KAKANWIL",
+        noHp: "081398765432",
+        roleCode: "APPROVER_KAKANWIL",
       },
       {
         npk: "21040889",
@@ -46,7 +46,8 @@ async function seedUsers() {
         unitKode: "KP-UMUM-SDM",
         unitNama: "Kantor Pusat - Divisi Umum & SDM",
         initials: "AT",
-        role: "ADMIN_TRAVEL_KP",
+        noHp: "081122334455",
+        roleCode: "ADMIN_TRAVEL_KP",
       },
       {
         npk: "19034451",
@@ -57,7 +58,8 @@ async function seedUsers() {
         unitKode: "KP-KEUANGAN",
         unitNama: "Kantor Pusat - Deputi Direktur Keuangan",
         initials: "AO",
-        role: "ASDEP_KEUANGAN",
+        noHp: "085678901234",
+        roleCode: "ASDEP_KEUANGAN",
       },
       {
         npk: "10000001",
@@ -68,29 +70,38 @@ async function seedUsers() {
         unitKode: "KP-TI",
         unitNama: "Kantor Pusat - TI & Transformasi Digital",
         initials: "SA",
-        role: "SUPER_ADMIN",
+        noHp: "081900001111",
+        roleCode: "SUPER_ADMIN",
       },
     ];
 
-    // Query INSERT dengan klausa UPSERT (ON CONFLICT)
+    // Mulai Transaksi Seeding
+    await client.query("BEGIN");
+
     for (const user of dummyUsers) {
-      const query = `
+      // A. UPSERT Ke Tabel `users`
+      const queryUser = `
         INSERT INTO users (
           npk, nama_lengkap, email, password_hash, 
           jabatan, golongan, unit_kerja_kode, 
-          unit_kerja_nama, avatar_initials, role
+          unit_kerja_nama, avatar_initials, role, no_hp, is_active
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true)
         ON CONFLICT (npk) DO UPDATE 
         SET nama_lengkap = EXCLUDED.nama_lengkap,
             email = EXCLUDED.email,
             role = EXCLUDED.role,
             jabatan = EXCLUDED.jabatan,
+            golongan = EXCLUDED.golongan,
+            unit_kerja_kode = EXCLUDED.unit_kerja_kode,
+            unit_kerja_nama = EXCLUDED.unit_kerja_nama,
             avatar_initials = EXCLUDED.avatar_initials,
-            password_hash = EXCLUDED.password_hash;
+            no_hp = EXCLUDED.no_hp,
+            password_hash = EXCLUDED.password_hash
+        RETURNING id;
       `;
 
-      await client.query(query, [
+      const resUser = await client.query(queryUser, [
         user.npk,
         user.nama,
         user.email,
@@ -100,32 +111,46 @@ async function seedUsers() {
         user.unitKode,
         user.unitNama,
         user.initials,
-        user.role,
+        user.roleCode,
+        user.noHp,
       ]);
+
+      const userId = resUser.rows[0].id;
+
+      // B. Sinkronisasi Otomatis ke Tabel Relasi `user_roles`
+      const queryRole = `SELECT id FROM roles WHERE code = $1`;
+      const resRole = await client.query(queryRole, [user.roleCode]);
+
+      if (resRole.rows.length > 0) {
+        const roleId = resRole.rows[0].id;
+
+        const queryUserRole = `
+          INSERT INTO user_roles (user_id, role_id)
+          VALUES ($1, $2)
+          ON CONFLICT (user_id, role_id) DO NOTHING;
+        `;
+        await client.query(queryUserRole, [userId, roleId]);
+      }
     }
 
-    console.log("✅ Seeding data users anonim berhasil!");
-    console.log("🔑 Akun Pengujian yang Siap Digunakan:");
-    console.log(
-      " - Official Booker      : booker.test@bpjsketenagakerjaan.go.id (Role: OFFICIAL_BOOKER)",
-    );
-    console.log(
-      " - Pejabat              : approver.test@bpjsketenagakerjaan.go.id (Role: APPROVER_KAKANWIL)",
-    );
-    console.log(
-      " - Admin Travel         : admin.travel@bpjsketenagakerjaan.go.id (Role: ADMIN_TRAVEL_KP)",
-    );
-    console.log(
-      " - Admin Anggaran / OTI : admin.anggaran@bpjsketenagakerjaan.go.id (Role: ASDEP_KEUANGAN)",
-    );
-    console.log(" 🔑 Password Default: Password123!");
+    await client.query("COMMIT");
+
+    console.log("✅ Seeding data users & roles relasional berhasil!");
+    console.log("🔑 Akun Pengujian yang Siap Digunakan (Password: Password123!):");
+    console.log(" - Official Booker      : booker.test@bpjsketenagakerjaan.go.id");
+    console.log(" - Pejabat Penyetuju    : approver.test@bpjsketenagakerjaan.go.id");
+    console.log(" - Admin Travel Pusat   : admin.travel@bpjsketenagakerjaan.go.id");
+    console.log(" - Admin Anggaran / OTI : admin.anggaran@bpjsketenagakerjaan.go.id");
+    console.log(" - Super Admin E-TO     : super.admin@bpjsketenagakerjaan.go.id");
+
   } catch (error) {
-    console.error("❌ Terjadi kesalahan saat seeding:", error);
+    await client.query("ROLLBACK");
+    console.error("❌ Terjadi kesalahan saat seeding users:", error);
   } finally {
     client.release();
     await pool.end();
   }
 }
 
-// Jalankan seeder
+// Eksekusi seeder
 seedUsers();

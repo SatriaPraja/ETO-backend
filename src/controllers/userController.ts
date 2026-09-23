@@ -79,4 +79,30 @@ export class UserController {
       });
     }
   };
+  getEmployees = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { search, scope, page, limit } = req.query
+    const userUnitCode = req.user?.unitKerjaKode || 'KANWIL-JATIM'
+
+    const data = await this.userService.getEmployeesForLOV({
+      search: search as string,
+      scope: (scope as 'my-unit' | 'national') || 'my-unit',
+      userUnitCode,
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? parseInt(limit as string, 10) : 10,
+    })
+
+    return res.status(200).json({
+      success: true,
+      message: 'Daftar personel HCIS berhasil dipanggil.',
+      data: data.employees,
+      pagination: data.pagination,
+    })
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Gagal memanggil data personel HCIS.',
+    })
+  }
+}
 }

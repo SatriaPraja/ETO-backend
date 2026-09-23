@@ -13,7 +13,7 @@ export const getUsersQuerySchema = z.object({
     .optional()
     .transform((val) => (val ? Number(val) : 10)),
 })
-// Schema Update User
+
 export const updateUserSchema = z.object({
   namaLengkap: z.string().min(2, 'Nama minimal 2 karakter').optional(),
   email: z.string().email('Format email tidak valid').optional(),
@@ -22,6 +22,7 @@ export const updateUserSchema = z.object({
   golongan: z.string().optional(),
   unitKerjaKode: z.string().optional(),
   unitKerjaNama: z.string().optional(),
+  noHp: z.string().optional(),
   role: z.enum([
     'OFFICIAL_BOOKER',
     'APPROVER_KAKANWIL',
@@ -31,13 +32,34 @@ export const updateUserSchema = z.object({
   ]).optional(),
 })
 
-// Schema Toggle Status (Active / Inactive)
 export const toggleUserStatusSchema = z.object({
   status: z.enum(['active', 'inactive'], {
     message: 'Status harus active atau inactive',
   }),
 })
 
+export const createUserSchema = z.object({
+  body: z.object({
+    npk: z.string().min(1, 'NPK wajib diisi'),
+    namaLengkap: z.string().min(1, 'Nama lengkap wajib diisi'),
+    email: z.string().email('Format email tidak valid'),
+    password: z.string().min(6, 'Password minimal 6 karakter'),
+    jabatan: z.string().min(1, 'Jabatan wajib diisi'),
+    golongan: z.string().min(1, 'Golongan wajib diisi'),
+    unitKerjaKode: z.string().min(1, 'Kode unit kerja wajib diisi'),
+    unitKerjaNama: z.string().min(1, 'Nama unit kerja wajib diisi'),
+    noHp: z.string().optional(),
+    role: z.enum([
+      'SUPER_ADMIN',
+      'OFFICIAL_BOOKER',
+      'APPROVER_KAKANWIL',
+      'ADMIN_TRAVEL_KP',
+      'ASDEP_KEUANGAN',
+    ]),
+  }),
+})
+
+export type CreateUserDTO = z.infer<typeof createUserSchema>['body']
 export type GetUsersQueryDTO = z.infer<typeof getUsersQuerySchema>
 export type UpdateUserDTO = z.infer<typeof updateUserSchema>
 export type ToggleUserStatusDTO = z.infer<typeof toggleUserStatusSchema>
@@ -51,6 +73,7 @@ export interface UserListEntity {
   golongan: string
   unit_kerja_kode: string
   unit_kerja_nama: string
+  no_hp?: string
   avatar_initials: string
   role: UserRole
   is_active: boolean
