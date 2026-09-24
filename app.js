@@ -10,6 +10,7 @@ import authRoutes from "./src/routes/authRoutes.ts";
 import userRoutes from "./src/routes/userRoutes.ts";
 import travelOrderRoutes from "./src/routes/travelOrderRoutes.ts";
 import historyRoute from "./src/routes/historyRoute.ts";
+import approvalRoutes from "./src/routes/approvalRoutes.ts";
 
 import { swaggerSpec } from "./src/docs/index.ts";
 
@@ -69,5 +70,6 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/travel-orders", travelOrderRoutes);
 app.use("/api/history", historyRoute);
+app.use("/api/approval", approvalRoutes);
 
 export default app;

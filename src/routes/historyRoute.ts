@@ -22,4 +22,14 @@ router.get(
   historyController.getOrderHistory
 )
 
+// 🟢 Route Baru: Ambil Detail berdasarkan Nomor TO (misal: TO-2026-05-00187)
+router.get(
+  '/:toCode',
+  [
+    authenticateJWT,
+    authorizeRoles('OFFICIAL_BOOKER', 'APPROVER_KAKANWIL', 'ADMIN_TRAVEL_KP', 'SUPER_ADMIN')
+  ],
+  historyController.getOrderDetailByToCode
+);
+
 export default router

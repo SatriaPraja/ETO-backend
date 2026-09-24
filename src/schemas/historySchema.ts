@@ -13,4 +13,10 @@ export const GetHistoryOrdersQuerySchema = z.object({
   limit: z.coerce.number().optional().default(20),
 })
 
+export const getOrderDetailParamSchema = z.object({
+  toCode: z.string().min(1, "Nomor Travel Order wajib diisi"),
+});
+
+export type GetOrderDetailParam = z.infer<typeof getOrderDetailParamSchema>;
+
 export type GetHistoryOrdersQuery = z.infer<typeof GetHistoryOrdersQuerySchema>

@@ -39,8 +39,8 @@ export class ReferenceRepository {
   }
 
   async findOfficialBookers(searchQuery?: string) {
-    // 🟢 Ubah u.status::text agar bisa dibaca LOWER() atau bandingkan langsung nilai enum-nya
-    let whereClause = `WHERE u.role = 'OFFICIAL_BOOKER' AND (LOWER(u.status::text) = 'active' OR u.status IS NULL)`;
+    // 🟢 Hapus filter u.role = 'OFFICIAL_BOOKER' agar semua pegawai muncul
+    let whereClause = `WHERE (LOWER(u.status::text) = 'active' OR u.status IS NULL)`;
     const queryParams: any[] = [];
 
     if (searchQuery && searchQuery.trim() !== "") {
@@ -115,24 +115,27 @@ export class ReferenceRepository {
     if (searchQuery && searchQuery.trim() !== "") {
       queryParams.push(`%${searchQuery.trim().toLowerCase()}%`);
       whereClause += ` AND (
-        LOWER(h.name) LIKE $${queryParams.length} OR 
-        LOWER(h.address) LIKE $${queryParams.length}
-      )`;
+      LOWER(h.name) LIKE $${queryParams.length} OR 
+      LOWER(h.address) LIKE $${queryParams.length} OR
+      LOWER(c.name) LIKE $${queryParams.length}
+    )`;
     }
 
     const query = `
-      SELECT 
-        h.id,
-        h.name,
-        h.city_id AS "cityId",
-        h.star_rating AS "starRating",
-        h.address,
-        h.is_active AS "isActive"
-      FROM master_hotels h
-      ${whereClause}
-      ORDER BY h.name ASC
-      LIMIT 50
-    `;
+    SELECT 
+      h.id,
+      h.name,
+      h.city_id AS "cityId",
+      c.name AS "cityName",
+      h.star_rating AS "starRating",
+      h.address,
+      h.is_active AS "isActive"
+    FROM master_hotels h
+    LEFT JOIN master_cities c ON h.city_id = c.id
+    ${whereClause}
+    ORDER BY h.name ASC
+    LIMIT 50
+  `;
 
     const res = await this.pool.query(query, queryParams);
     return res.rows;
