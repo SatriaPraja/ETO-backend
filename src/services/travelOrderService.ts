@@ -3,6 +3,7 @@ import { TravelOrderRepository } from "../repositories/travelOrderRepository.ts"
 import {
   CreateTravelOrderDTO,
   CreateHotelOrderDTO,
+  UpdateTravelOrderInput,
 } from "../schemas/travelOrderSchema.ts";
 
 export class TravelOrderService {
@@ -229,5 +230,22 @@ export class TravelOrderService {
     });
 
     return formattedData;
+  }
+
+  async editAndResubmitOrder(input: UpdateTravelOrderInput, userId: string) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN'); // Transaksi DB
+
+      const result = await this.toRepo.updateTravelOrderWithResubmit(client, input, userId);
+
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }

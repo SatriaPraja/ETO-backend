@@ -125,6 +125,61 @@ export const CreateHotelOrderDTOSchema = z.object({
     .min(1, "Minimal tambahkan 1 pemesanan hotel"),
 });
 
+export const updateTransportItemSchema = z.object({
+  id: z.string().uuid().optional(),
+  guestName: z.string().min(1, "Nama traveller wajib diisi"),
+  npkOrKtp: z.string().optional(),
+  jabatan: z.string().optional(),
+  instansi: z.string().optional(),
+  phone: z.string().min(1, "Nomor HP wajib diisi"),
+  departureDate: z.string().min(1, "Tanggal keberangkatan wajib diisi"),
+  departureTime: z.string().optional().default("08:00"),
+  returnDate: z.string().optional(),
+  returnTime: z.string().optional(),
+  isRoundTrip: z.boolean().optional().default(false),
+  estimatedPrice: z.coerce.number().min(0).default(0),
+});
+
+// Skema Tamu Hotel per Kamar
+export const updateHotelGuestSchema = z.object({
+  id: z.string().uuid().optional(),
+  roomNumber: z.string().min(1, "Nomor kamar wajib diisi"), // e.g. "Kamar 01"
+  bedSlot: z.string().min(1, "Bed slot wajib diisi"), // e.g. "Bed A"
+  guestName: z.string().min(1, "Nama tamu wajib diisi"),
+  npkOrKtp: z.string().optional(),
+  jabatanOrInstansi: z.string().optional(),
+  phone: z.string().optional(),
+});
+
+// Skema Pemesanan Hotel
+export const updateHotelItemSchema = z.object({
+  id: z.string().uuid().optional(),
+  hotelId: z.number().int().optional(),
+  hotelNameCustom: z.string().optional(),
+  cityId: z.number().int().optional(),
+  roomCount: z.coerce.number().min(1).default(1),
+  checkInDate: z.string().min(1, "Tanggal Check-in wajib diisi"),
+  checkOutDate: z.string().min(1, "Tanggal Check-out wajib diisi"),
+  durationNights: z.coerce.number().min(1).default(1),
+  pricePerNight: z.coerce.number().min(0).default(0),
+  subtotalPrice: z.coerce.number().min(0).default(0),
+  guests: z.array(updateHotelGuestSchema).optional().default([]),
+});
+
+// Skema Utama Koreksi Travel Order
+export const updateTravelOrderSchema = z.object({
+  travelOrderId: z.string().uuid("ID Travel Order tidak valid"),
+  sprinNumber: z.string().min(1, "Nomor Sprin wajib diisi"),
+  activityName: z.string().min(1, "Nama kegiatan wajib diisi"),
+  budgetId: z.string().uuid("Mata Anggaran (MAK) wajib dipilih"),
+  sprinDetail: z.string().min(1, "Detail penugasan Sprin wajib diisi"),
+  notes: z.string().min(1, "Catatan perbaikan (Booker Notes) wajib diisi"),
+  transports: z.array(updateTransportItemSchema).optional().default([]),
+  hotels: z.array(updateHotelItemSchema).optional().default([]),
+});
+
+export type UpdateTravelOrderInput = z.infer<typeof updateTravelOrderSchema>;
+
 // ====================================================================
 // D. EXPORT INFERRED TYPES
 // ====================================================================

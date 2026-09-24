@@ -1,7 +1,8 @@
-import { Pool } from "pg";
+import { Pool, PoolClient } from "pg";
 import {
   CreateTravelOrderDTO,
   CreateHotelOrderDTO,
+  UpdateTravelOrderInput,
 } from "../schemas/travelOrderSchema.ts";
 
 export class TravelOrderRepository {
@@ -417,5 +418,178 @@ export class TravelOrderRepository {
         ],
       );
     }
+  }
+
+  async updateTravelOrderWithResubmit(
+    client: PoolClient,
+    input: UpdateTravelOrderInput,
+    userId: string,
+  ) {
+    // 1. Hitung Ulang Total Estimasi Biaya (Transportasi + Hotel)
+    let totalTransportCost = 0;
+    input.transports.forEach((t) => {
+      totalTransportCost += Number(t.estimatedPrice) || 0;
+    });
+
+    let totalHotelCost = 0;
+    input.hotels.forEach((h) => {
+      totalHotelCost += Number(h.subtotalPrice) || 0;
+    });
+
+    const grandTotalCost = totalTransportCost + totalHotelCost;
+
+    // 2. Update Header Travel Order & Ubah Status Kembali ke WAITING_PEJABAT
+    const updateHeaderQuery = `
+      UPDATE travel_orders 
+      SET 
+        sprin_number = $1,
+        activity_name = $2,
+        budget_id = $3,
+        sprin_detail = $4,
+        notes = $5,
+        total_estimated_cost = $6,
+        status = 'WAITING_PEJABAT',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $7
+      RETURNING *;
+    `;
+
+    const headerRes = await client.query(updateHeaderQuery, [
+      input.sprinNumber,
+      input.activityName,
+      input.budgetId,
+      input.sprinDetail,
+      input.notes,
+      grandTotalCost,
+      input.travelOrderId,
+    ]);
+
+    if (headerRes.rowCount === 0) {
+      throw new Error("Travel Order tidak ditemukan");
+    }
+
+    // 3. Update / Upsert Detail Transportasi
+    for (const t of input.transports) {
+      if (t.id) {
+        await client.query(
+          `
+          UPDATE order_transports SET 
+            guest_name = $1, npk_or_ktp = $2, jabatan = $3, instansi = $4, phone = $5,
+            departure_date = $6, departure_time = $7, return_date = $8, return_time = $9,
+            is_round_trip = $10, estimated_price = $11
+          WHERE id = $12 AND travel_order_id = $13;
+        `,
+          [
+            t.guestName,
+            t.npkOrKtp || null,
+            t.jabatan || null,
+            t.instansi || null,
+            t.phone,
+            t.departureDate,
+            t.departureTime || "08:00",
+            t.returnDate || null,
+            t.returnTime || null,
+            t.isRoundTrip || false,
+            t.estimatedPrice,
+            t.id,
+            input.travelOrderId,
+          ],
+        );
+      }
+    }
+
+    // 4. Update / Upsert Detail Hotel & Tamu Hotel
+    for (const h of input.hotels) {
+      let hotelOrderId = h.id;
+
+      if (hotelOrderId) {
+        // Update data booking hotel yang ada
+        await client.query(
+          `
+          UPDATE order_hotels SET 
+            hotel_id = $1, hotel_name_custom = $2, city_id = $3, room_count = $4,
+            check_in_date = $5, check_out_date = $6, duration_nights = $7,
+            price_per_night = $8, subtotal_price = $9
+          WHERE id = $10 AND travel_order_id = $11;
+        `,
+          [
+            h.hotelId || null,
+            h.hotelNameCustom || null,
+            h.cityId || null,
+            h.roomCount,
+            h.checkInDate,
+            h.checkOutDate,
+            h.durationNights,
+            h.pricePerNight,
+            h.subtotalPrice,
+            hotelOrderId,
+            input.travelOrderId,
+          ],
+        );
+      } else {
+        // Insert hotel baru jika ditambahkan saat revisi
+        const insertHotelRes = await client.query(
+          `
+          INSERT INTO order_hotels (
+            travel_order_id, hotel_id, hotel_name_custom, city_id, room_count,
+            check_in_date, check_out_date, duration_nights, price_per_night, subtotal_price
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING id;
+        `,
+          [
+            input.travelOrderId,
+            h.hotelId || null,
+            h.hotelNameCustom || null,
+            h.cityId || null,
+            h.roomCount,
+            h.checkInDate,
+            h.checkOutDate,
+            h.durationNights,
+            h.pricePerNight,
+            h.subtotalPrice,
+          ],
+        );
+        hotelOrderId = insertHotelRes.rows[0].id;
+      }
+
+      // Update Tamu Hotel (order_hotel_guests)
+      for (const g of h.guests) {
+        if (g.id) {
+          await client.query(
+            `
+            UPDATE order_hotel_guests SET 
+              room_number = $1, bed_slot = $2, guest_name = $3,
+              npk_or_ktp = $4, jabatan_or_instansi = $5, phone = $6, is_filled = TRUE
+            WHERE id = $7 AND order_hotel_id = $8;
+          `,
+            [
+              g.roomNumber,
+              g.bedSlot,
+              g.guestName,
+              g.npkOrKtp || null,
+              g.jabatanOrInstansi || null,
+              g.phone || null,
+              g.id,
+              hotelOrderId,
+            ],
+          );
+        }
+      }
+    }
+
+    // 5. Catat Log Resubmit ke approval_logs
+    await client.query(
+      `
+      INSERT INTO approval_logs (travel_order_id, actor_id, action, notes)
+      VALUES ($1, $2, 'RESUBMITTED', $3);
+    `,
+      [
+        input.travelOrderId,
+        userId,
+        `Pengajuan dikoreksi oleh Booker - Catatan: ${input.notes}`,
+      ],
+    );
+
+    return headerRes.rows[0];
   }
 }

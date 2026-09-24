@@ -1,5 +1,5 @@
 import { ApprovalRepository } from "../repositories/approvalRepository";
-import { UpdateStatusInput } from "../schemas/approvalSchema";
+import { GetInboxQueryInput, UpdateStatusInput } from "../schemas/approvalSchema";
 
 // Define Tipe Data currentUser agar TypeScript tidak melempar error
 interface CurrentUserPayload {
@@ -132,5 +132,82 @@ export class ApprovalService {
     } finally {
       client.release();
     }
+  }
+
+  async getInbox(query: GetInboxQueryInput, currentUser: any) {
+    const userPayload = {
+      id: currentUser.id || currentUser.user?.id || "",
+      activeRole:
+        currentUser.activeRole ||
+        currentUser.role ||
+        currentUser.user?.role ||
+        "",
+    };
+
+    const rawData = await this.repo.getInboxOrders(query, userPayload);
+
+    // Helper Format Waktu Relative
+    const formatTimeAgo = (dateStr: string) => {
+      const diffMs = new Date().getTime() - new Date(dateStr).getTime();
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      if (diffMins < 60) return `${Math.max(diffMins, 1)} mnt lalu`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours} jam lalu`;
+      return "Kemarin";
+    };
+
+    // Helper Format Rupiah
+    const formatRupiah = (val: number | string) => {
+      const num = Number(val) || 0;
+      return new Intl.NumberFormat("id-ID", {
+        style: "currency",
+        currency: "IDR",
+        maximumFractionDigits: 0,
+      }).format(num);
+    };
+
+    // Helper Pemetaan Ikon & Warna berdasarkan Transport Type
+    const getTransportMeta = (type?: string) => {
+      switch (type) {
+        case "flight":
+          return { icon: "flight", color: "bg-sky-500" };
+        case "train":
+          return { icon: "train", color: "bg-orange-500" };
+        case "car":
+          return { icon: "directions_car", color: "bg-emerald-600" };
+        case "bus":
+          return { icon: "directions_bus", color: "bg-red-800" };
+        default:
+          return { icon: "directions_boat", color: "bg-purple-600" };
+      }
+    };
+
+    // Pemetaan ke Interface Vue Frontend
+    const mappedItems = rawData.items.map((row: any) => {
+      const meta = getTransportMeta(row.primaryTransportType);
+      return {
+        id: row.toCode,
+        rawId: row.id,
+        title: row.activityName,
+        submitter: row.bookerNama || "Official Booker",
+        unit: row.unitKerjaNama || "BPJS Ketenagakerjaan",
+        timeAgo: formatTimeAgo(row.createdAt),
+        typeIcon: meta.icon,
+        typeColor: meta.color,
+        travelerCount: `${row.travelerCount || 0} Karyawan`,
+        amount: formatRupiah(row.totalEstimatedCost),
+        statusText:
+          row.status === "WAITING_PEJABAT" ||
+          row.status === "WAITING_ADMINTRAVEL"
+            ? "Sedang Ditinjau ➔"
+            : "›",
+        status: row.status,
+      };
+    });
+
+    return {
+      items: mappedItems,
+      counts: rawData.counts,
+    };
   }
 }

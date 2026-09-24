@@ -17,5 +17,13 @@ export const updateStatusSchema = z.object({
   ),
   notes: z.string().optional()
 });
+export const getInboxQuerySchema = z.object({
+  tab: z.enum(['pending', 'history']).default('pending'),
+  search: z.string().optional().default(''),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(50).default(10)
+});
+
+export type GetInboxQueryInput = z.infer<typeof getInboxQuerySchema>;
 
 export type UpdateStatusInput = z.infer<typeof updateStatusSchema>;
