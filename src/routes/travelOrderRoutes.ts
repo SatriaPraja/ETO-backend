@@ -47,8 +47,7 @@ router.get(
   toController.getExistingOrders,
 );
 
-// 🟢 4. Endpoint Edit & Kirim Ulang (Resubmit) Travel Order
-router.put("/:id", authMiddlewares, toController.updateOrder);
+
 
 // ==========================================
 // 🚀 ENDPOINTS REFERENCE & LOV

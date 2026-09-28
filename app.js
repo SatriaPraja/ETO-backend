@@ -11,6 +11,7 @@ import userRoutes from "./src/routes/userRoutes.ts";
 import travelOrderRoutes from "./src/routes/travelOrderRoutes.ts";
 import historyRoute from "./src/routes/historyRoute.ts";
 import approvalRoutes from "./src/routes/approvalRoutes.ts";
+import travelEditOrderRoutes from "./src/routes/travelEditOrderRoutes.ts";
 
 import { swaggerSpec } from "./src/docs/index.ts";
 
@@ -69,6 +70,7 @@ app.get("/", (req, res) => res.redirect("/docs"));
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/travel-orders", travelOrderRoutes);
+app.use("/api/travel-orders/edit", travelEditOrderRoutes);
 app.use("/api/history", historyRoute);
 app.use("/api/approval", approvalRoutes);
 
