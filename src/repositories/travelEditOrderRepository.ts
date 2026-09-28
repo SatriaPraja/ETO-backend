@@ -47,6 +47,7 @@ export class TravelEditOrderRepository {
         COALESCE((
           SELECT json_agg(json_build_object(
             'id', ot.id,
+            'transportType', ot.transport_type,
             'category', ot.category,
             'userId', ot.user_id,
             'guestName', ot.guest_name,
@@ -54,8 +55,12 @@ export class TravelEditOrderRepository {
             'jabatan', ot.jabatan,
             'instansi', ot.instansi,
             'phone', ot.phone,
+            'routeInfo', ot.route_info,
+            'originCityId', ot.origin_city_id,
+            'destinationCityId', ot.destination_city_id,
             'departureDate', TO_CHAR(ot.departure_date, 'YYYY-MM-DD'),
             'departureTime', ot.departure_time,
+            'maskapai', ot.maskapai,
             'returnDate', TO_CHAR(ot.return_date, 'YYYY-MM-DD'),
             'returnTime', ot.return_time,
             'isRoundTrip', ot.is_round_trip,
@@ -71,7 +76,7 @@ export class TravelEditOrderRepository {
             'hotelId', oh.hotel_id,
             'hotelNameCustom', oh.hotel_name_custom,
             'cityId', oh.city_id,
-            'cityName', mc.name, -- 🟢 Mengambil nama kota dari master_cities
+            'cityName', mc.name,
             'roomCount', oh.room_count,
             'checkInDate', TO_CHAR(oh.check_in_date, 'YYYY-MM-DD'),
             'checkOutDate', TO_CHAR(oh.check_out_date, 'YYYY-MM-DD'),
@@ -95,7 +100,7 @@ export class TravelEditOrderRepository {
             ), '[]'::json)
           ))
           FROM order_hotels oh
-          LEFT JOIN master_cities mc ON oh.city_id = mc.id -- 🟢 JOIN ke master_cities
+          LEFT JOIN master_cities mc ON oh.city_id = mc.id
           WHERE oh.travel_order_id = tro.id
         ), '[]'::json) AS "hotels"
 
@@ -118,13 +123,13 @@ export class TravelEditOrderRepository {
     input: UpdateTravelOrderCorrectionInput,
     userId: string,
   ) {
-    // A. Hitung Ulang Total Cost
+    // A. Hitung Ulang Total Cost Header
     const totalTransport = input.transports.reduce(
-      (sum, t) => sum + Number(t.estimatedPrice || 0),
+      (sum, t) => sum + Number(t.estimatedPrice ?? t.estimated_price ?? 0),
       0,
     );
     const totalHotel = input.hotels.reduce(
-      (sum, h) => sum + Number(h.subtotalPrice || 0),
+      (sum, h) => sum + Number(h.subtotalPrice ?? h.subtotal_price ?? 0),
       0,
     );
     const grandTotalCost = totalTransport + totalHotel;
@@ -160,7 +165,7 @@ export class TravelEditOrderRepository {
       throw new Error("Travel Order tidak ditemukan.");
     }
 
-    // C. Hapus Transport Yang Dibuang User dari Form
+    // C. Sync Delete Transport Yang Dibuang User dari Form
     const transportKeepIds = input.transports
       .map((t) => t.id)
       .filter((id): id is string => Boolean(id) && this.isValidUUID(id));
@@ -179,27 +184,45 @@ export class TravelEditOrderRepository {
 
     // D. Upsert Transport (Insert / Update order_transports)
     for (const t of input.transports) {
+      const guestName = t.guestName || t.guest_name || "";
+      const npkOrKtp = t.npkOrKtp || t.npk_or_ktp || null;
+      const routeInfo = t.routeInfo || t.route_info || null;
+      const originCityId = t.originCityId || t.origin_city_id || null;
+      const destinationCityId = t.destinationCityId || t.destination_city_id || null;
+      const departureDate = t.departureDate || t.departure_date;
+      const departureTime = t.departureTime || t.departure_time || "08:00:00";
+      const returnDate = t.returnDate || t.return_date || null;
+      const returnTime = t.returnTime || t.return_time || null;
+      const isRoundTrip = Boolean(t.isRoundTrip ?? t.is_round_trip);
+      const estimatedPrice = Number(t.estimatedPrice ?? t.estimated_price ?? 0);
+
       if (t.id && this.isValidUUID(t.id)) {
         await client.query(
           `
           UPDATE order_transports SET 
             guest_name = $1, npk_or_ktp = $2, jabatan = $3, instansi = $4, phone = $5,
-            departure_date = $6, departure_time = $7, return_date = $8, return_time = $9,
-            is_round_trip = $10, estimated_price = $11
-          WHERE id = $12 AND travel_order_id = $13;
+            route_info = $6, origin_city_id = $7, destination_city_id = $8,
+            departure_date = $9, departure_time = $10, maskapai = $11,
+            return_date = $12, return_time = $13,
+            is_round_trip = $14, estimated_price = $15
+          WHERE id = $16 AND travel_order_id = $17;
           `,
           [
-            t.guestName,
-            t.npkOrKtp || null,
+            guestName,
+            npkOrKtp,
             t.jabatan || null,
             t.instansi || null,
             t.phone,
-            t.departureDate,
-            t.departureTime || "08:00",
-            t.returnDate || null,
-            t.returnTime || null,
-            Boolean(t.isRoundTrip),
-            Number(t.estimatedPrice) || 0,
+            routeInfo,
+            originCityId,
+            destinationCityId,
+            departureDate,
+            departureTime,
+            t.maskapai || null,
+            returnDate,
+            returnTime,
+            isRoundTrip,
+            estimatedPrice,
             t.id,
             input.travelOrderId,
           ],
@@ -209,31 +232,37 @@ export class TravelEditOrderRepository {
           `
           INSERT INTO order_transports (
             travel_order_id, transport_type, category, user_id, guest_name, npk_or_ktp,
-            jabatan, instansi, phone, departure_date, departure_time, return_date, return_time,
+            jabatan, instansi, phone, route_info, origin_city_id, destination_city_id,
+            departure_date, departure_time, maskapai, return_date, return_time,
             is_round_trip, estimated_price
-          ) VALUES ($1, 'flight', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);
           `,
           [
             input.travelOrderId,
+            t.transportType || "flight",
             t.category || "INTERNAL",
-            t.userId || null,
-            t.guestName,
-            t.npkOrKtp || null,
+            t.userId || t.user_id || null,
+            guestName,
+            npkOrKtp,
             t.jabatan || null,
             t.instansi || null,
             t.phone,
-            t.departureDate,
-            t.departureTime || "08:00",
-            t.returnDate || null,
-            t.returnTime || null,
-            Boolean(t.isRoundTrip),
-            Number(t.estimatedPrice) || 0,
+            routeInfo,
+            originCityId,
+            destinationCityId,
+            departureDate,
+            departureTime,
+            t.maskapai || null,
+            returnDate,
+            returnTime,
+            isRoundTrip,
+            estimatedPrice,
           ],
         );
       }
     }
 
-    // E. Sync Hapus Hotel Yang Dibuang dari Form
+    // E. Sync Delete Hotel Yang Dibuang dari Form
     const hotelKeepIds = input.hotels
       .map((h) => h.id)
       .filter((id): id is string => Boolean(id) && this.isValidUUID(id));
@@ -254,6 +283,16 @@ export class TravelEditOrderRepository {
     for (const h of input.hotels) {
       let hotelId = h.id;
 
+      const hotelIdRef = h.hotelId ?? h.hotel_id ?? null;
+      const hotelCustomName = h.hotelNameCustom ?? h.hotel_name_custom ?? null;
+      const cityId = h.cityId ?? h.city_id ?? null;
+      const roomCount = Number(h.roomCount ?? h.room_count ?? 1);
+      const checkInDate = h.checkInDate || h.check_in_date;
+      const checkOutDate = h.checkOutDate || h.check_out_date;
+      const durationNights = Number(h.durationNights ?? h.duration_nights ?? 1);
+      const pricePerNight = Number(h.pricePerNight ?? h.price_per_night ?? 0);
+      const subtotalPrice = Number(h.subtotalPrice ?? h.subtotal_price ?? 0);
+
       if (hotelId && this.isValidUUID(hotelId)) {
         await client.query(
           `
@@ -264,15 +303,15 @@ export class TravelEditOrderRepository {
           WHERE id = $10 AND travel_order_id = $11;
           `,
           [
-            h.hotelId || null,
-            h.hotelNameCustom || null,
-            h.cityId || null,
-            h.roomCount,
-            h.checkInDate,
-            h.checkOutDate,
-            h.durationNights,
-            h.pricePerNight,
-            h.subtotalPrice,
+            hotelIdRef,
+            hotelCustomName,
+            cityId,
+            roomCount,
+            checkInDate,
+            checkOutDate,
+            durationNights,
+            pricePerNight,
+            subtotalPrice,
             hotelId,
             input.travelOrderId,
           ],
@@ -287,23 +326,46 @@ export class TravelEditOrderRepository {
           `,
           [
             input.travelOrderId,
-            h.hotelId || null,
-            h.hotelNameCustom || null,
-            h.cityId || null,
-            h.roomCount,
-            h.checkInDate,
-            h.checkOutDate,
-            h.durationNights,
-            h.pricePerNight,
-            h.subtotalPrice,
+            hotelIdRef,
+            hotelCustomName,
+            cityId,
+            roomCount,
+            checkInDate,
+            checkOutDate,
+            durationNights,
+            pricePerNight,
+            subtotalPrice,
           ],
         );
         hotelId = insHotel.rows[0].id;
       }
 
-      // Upsert Tamu Hotel (order_hotel_guests)
+      // Sync Hapus & Upsert Tamu Hotel (order_hotel_guests)
       if (h.guests && h.guests.length > 0) {
+        const guestKeepIds = h.guests
+          .map((g) => g.id)
+          .filter((id): id is string => Boolean(id) && this.isValidUUID(id));
+
+        if (guestKeepIds.length > 0) {
+          await client.query(
+            `DELETE FROM order_hotel_guests WHERE order_hotel_id = $1 AND id NOT IN (${guestKeepIds.map((_, i) => `$${i + 2}`).join(",")})`,
+            [hotelId, ...guestKeepIds],
+          );
+        } else {
+          await client.query(
+            `DELETE FROM order_hotel_guests WHERE order_hotel_id = $1`,
+            [hotelId],
+          );
+        }
+
         for (const g of h.guests) {
+          const guestRoomNum = g.roomNumber || g.room_number || "Kamar 01";
+          const guestBedSlot = g.bedSlot || g.bed_slot || "Bed A";
+          const guestUserId = g.userId || g.user_id || null;
+          const guestName = g.guestName || g.guest_name || "";
+          const guestNpkKtp = g.npkOrKtp || g.npk_or_ktp || null;
+          const guestJabatanInstansi = g.jabatanOrInstansi || g.jabatan_or_instansi || null;
+
           if (g.id && this.isValidUUID(g.id)) {
             await client.query(
               `
@@ -313,13 +375,13 @@ export class TravelEditOrderRepository {
               WHERE id = $9 AND order_hotel_id = $10;
               `,
               [
-                g.roomNumber,
-                g.bedSlot,
+                guestRoomNum,
+                guestBedSlot,
                 g.category || "INTERNAL",
-                g.userId || null,
-                g.guestName,
-                g.npkOrKtp || null,
-                g.jabatanOrInstansi || null,
+                guestUserId,
+                guestName,
+                guestNpkKtp,
+                guestJabatanInstansi,
                 g.phone || null,
                 g.id,
                 hotelId,
@@ -335,13 +397,13 @@ export class TravelEditOrderRepository {
               `,
               [
                 hotelId,
-                g.roomNumber,
-                g.bedSlot,
+                guestRoomNum,
+                guestBedSlot,
                 g.category || "INTERNAL",
-                g.userId || null,
-                g.guestName,
-                g.npkOrKtp || null,
-                g.jabatanOrInstansi || null,
+                guestUserId,
+                guestName,
+                guestNpkKtp,
+                guestJabatanInstansi,
                 g.phone || null,
               ],
             );
