@@ -15,6 +15,7 @@ import travelEditOrderRoutes from "./src/routes/travelEditOrderRoutes.ts";
 import { createReportRouter } from "./src/routes/reportRoutes.ts";
 import { createVendorRouter } from "./src/routes/vendorRoutes.ts";
 import { createCityAirportRouter } from "./src/routes/cityAirportRoutes.ts";
+import { createBudgetRouter } from "./src/routes/budgetRoutes.ts";
 
 import { swaggerSpec } from "./src/docs/index.ts";
 
@@ -78,6 +79,7 @@ app.use("/api/history", historyRoute);
 app.use("/api/approval", approvalRoutes);
 app.use("/api/v1/reports", createReportRouter(pool));
 app.use("/api/v1/master/vendors", createVendorRouter(pool));
+app.use("/api/v1/master/budget", createBudgetRouter(pool));
 app.use("/api/v1", createCityAirportRouter(pool));
 
 export default app;
