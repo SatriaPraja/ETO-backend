@@ -92,10 +92,10 @@ export class ApprovalService {
       let defaultNote = `Status diubah menjadi ${targetStatus}`;
 
       if (targetStatus === "WAITING_PEJABAT") {
-        actionEnum = "RESUBMITTED"; //
+        actionEnum = "RESUBMITTED"; 
         defaultNote = "Pengajuan draf dikirimkan ulang (Resubmitted)";
       } else if (targetStatus === "WAITING_ADMINTRAVEL") {
-        actionEnum = "APPROVED"; //
+        actionEnum = "APPROVED"; 
         defaultNote = "Disetujui Pejabat (Menunggu Verifikasi Admin Travel)";
       } else if (targetStatus === "APPROVED") {
         actionEnum = "APPROVED";
