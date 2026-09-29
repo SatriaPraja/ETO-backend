@@ -13,6 +13,7 @@ import historyRoute from "./src/routes/historyRoute.ts";
 import approvalRoutes from "./src/routes/approvalRoutes.ts";
 import travelEditOrderRoutes from "./src/routes/travelEditOrderRoutes.ts";
 import { createReportRouter } from "./src/routes/reportRoutes.ts";
+import { createVendorRouter } from "./src/routes/vendorRoutes.ts";
 
 import { swaggerSpec } from "./src/docs/index.ts";
 
@@ -75,5 +76,6 @@ app.use("/api/travel-orders/edit", travelEditOrderRoutes);
 app.use("/api/history", historyRoute);
 app.use("/api/approval", approvalRoutes);
 app.use("/api/v1/reports", createReportRouter(pool));
+app.use("/api/v1/master/vendors", createVendorRouter(pool));
 
 export default app;
