@@ -1,8 +1,9 @@
 import { Pool } from "pg";
 import { TravelOrderRepository } from "../repositories/travelOrderRepository.ts";
 import {
-  CreateTravelOrderDTO,
-  CreateHotelOrderDTO,
+  CreateStandaloneTravelOrderDTO,
+  AddTransportToExistingTODTO,
+  AddHotelToExistingTODTO,
 } from "../schemas/travelOrderSchema.ts";
 
 export class TravelOrderService {
@@ -11,85 +12,24 @@ export class TravelOrderService {
     private pool: Pool,
   ) {}
 
-  // A. Tahap 1: Pengajuan Order Transportasi (Pesawat)
-  async createFlightOrder(bookerId: string, payload: CreateTravelOrderDTO) {
-    // 1. Hitung total estimasi biaya tiket penerbangan
-    const totalCost = payload.travellers.reduce((sum, item) => {
-      const price = item.price || 0;
-      return sum + (item.isRoundTrip ? price * 2 : price);
-    }, 0);
-
-    // 2. Cek kecukupan saldo anggaran
-    const budgetRes = await this.pool.query(
-      `SELECT pagu_budget, used_budget FROM master_budgets WHERE id = $1`,
-      [payload.budgetId || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"],
+  // 1. PEMBUATAN HEADER TRAVEL ORDER MANDIRI
+  async createTravelOrder(
+    bookerId: string,
+    payload: CreateStandaloneTravelOrderDTO,
+  ) {
+    const travelOrder = await this.toRepo.createTravelOrderHeader(
+      bookerId,
+      payload,
     );
-
-    if (budgetRes.rows.length > 0) {
-      const { pagu_budget, used_budget } = budgetRes.rows[0];
-      const remaining = parseFloat(pagu_budget) - parseFloat(used_budget);
-
-      if (totalCost > remaining) {
-        throw new Error(
-          `Saldo anggaran tidak mencukupi. Sisa saldo: Rp ${remaining.toLocaleString("id-ID")}`,
-        );
-      }
-    }
-
-    // 🟢 3. CEK ATAU BUAT TRAVEL ORDER (Existing vs Stand-alone)
-    // Periksa apakah toCode / existingToOption sudah terdaftar di DB
-    const targetCode = payload.existingToOption || payload.toCode;
-
-    const existingRes = await this.pool.query(
-      `SELECT id, to_code FROM travel_orders WHERE to_code = $1`,
-      [targetCode],
-    );
-
-    let travelOrderResult;
-
-    if (existingRes.rows.length > 0) {
-      // 🟢 JIKA TO SUDAH ADA: Hanya tambahkan item penerbangan ke order_transports
-      const existingTO = existingRes.rows[0];
-
-      // Tambahkan item traveler/transport baru ke TO yang ada
-      await this.toRepo.addTransportsToExistingTO(
-        existingTO.id,
-        payload.travellers,
-      );
-
-      // Update total biaya dan potong anggaran
-      await this.pool.query(
-        `UPDATE travel_orders SET total_estimated_cost = total_estimated_cost + $1 WHERE id = $2`,
-        [totalCost, existingTO.id],
-      );
-
-      await this.pool.query(
-        `UPDATE master_budgets SET used_budget = used_budget + $1 WHERE id = $2`,
-        [totalCost, payload.budgetId],
-      );
-
-      travelOrderResult = { id: existingTO.id, toCode: existingTO.to_code };
-    } else {
-      // 🟢 JIKA TO BARU (Stand-alone): Lakukan insert header travel_orders & detail order_transports
-      travelOrderResult = await this.toRepo.createFlightOrder(
-        bookerId,
-        payload,
-        totalCost,
-      );
-    }
-
     return {
       message:
-        existingRes.rows.length > 0
-          ? "Penerbangan berhasil ditambahkan ke Travel Order Existing."
-          : "Travel Order Pesawat berhasil diajukan.",
-      data: travelOrderResult,
+        "Header Travel Order berhasil dibuat. Silakan pilih Travel Order ini untuk menambah penerbangan/hotel.",
+      data: travelOrder,
     };
   }
 
-  // B. Tahap 2: Pengajuan Order Hotel (Gabung ke TO Existing)
-  async createHotelOrder(payload: CreateHotelOrderDTO) {
-    // 1. Cek keberadaan Travel Order Existing
+  // 2. PENGAJUAN MODUL TRANSPORTASI (HANYA UNTUK TO EXISTING)
+  async addTransportOrder(payload: AddTransportToExistingTODTO) {
     const toRes = await this.pool.query(
       `SELECT id, to_code, budget_id FROM travel_orders WHERE to_code = $1 OR id::text = $1`,
       [payload.travelOrderId],
@@ -103,24 +43,83 @@ export class TravelOrderService {
 
     const existingTO = toRes.rows[0];
 
-    // 2. Hitung Total Biaya Hotel
+    const totalCost = payload.travellers.reduce((sum, item) => {
+      const price = item.price || 0;
+      return sum + (item.isRoundTrip ? price * 2 : price);
+    }, 0);
+
+    // Cek saldo anggaran
+    const budgetRes = await this.pool.query(
+      `SELECT pagu_budget, used_budget FROM master_budgets WHERE id = $1`,
+      [existingTO.budget_id],
+    );
+
+    if (budgetRes.rows.length > 0) {
+      const { pagu_budget, used_budget } = budgetRes.rows[0];
+      const remaining = parseFloat(pagu_budget) - parseFloat(used_budget);
+
+      if (totalCost > remaining) {
+        throw new Error(
+          `Saldo anggaran tidak mencukupi. Sisa saldo: Rp ${remaining.toLocaleString("id-ID")}`,
+        );
+      }
+    }
+
+    await this.toRepo.addTransportsToExistingTO(
+      existingTO.id,
+      payload.travellers,
+      totalCost,
+    );
+
+    // Potong anggaran
+    await this.pool.query(
+      `UPDATE master_budgets SET used_budget = used_budget + $1 WHERE id = $2`,
+      [totalCost, existingTO.budget_id],
+    );
+
+    return {
+      message: `Pemesanan Transportasi berhasil ditambahkan ke Travel Order ${existingTO.to_code}`,
+      data: {
+        travelOrderId: existingTO.id,
+        toCode: existingTO.to_code,
+        totalCost,
+      },
+    };
+  }
+
+  // 3. PENGAJUAN MODUL HOTEL (HANYA UNTUK TO EXISTING)
+  async addHotelOrder(payload: AddHotelToExistingTODTO) {
+    const toRes = await this.pool.query(
+      `SELECT id, to_code, budget_id FROM travel_orders WHERE to_code = $1 OR id::text = $1`,
+      [payload.travelOrderId],
+    );
+
+    if (toRes.rows.length === 0) {
+      throw new Error(
+        `Travel Order '${payload.travelOrderId}' tidak ditemukan.`,
+      );
+    }
+
+    const existingTO = toRes.rows[0];
+
     const hotelCost = payload.hotels.reduce(
       (sum, item) => sum + (item.subtotalPrice || 0),
       0,
     );
 
-    // 3. Simpan Detail Hotel ke order_hotels & potong anggaran
     const savedHotels = await this.toRepo.addHotelToExistingTO(
       existingTO.id,
-      existingTO.budget_id,
       payload.hotels,
       hotelCost,
     );
 
+    await this.pool.query(
+      `UPDATE master_budgets SET used_budget = used_budget + $1 WHERE id = $2`,
+      [hotelCost, existingTO.budget_id],
+    );
+
     return {
-      message:
-        "Pemesanan Hotel berhasil ditambahkan ke Travel Order " +
-        existingTO.to_code,
+      message: `Pemesanan Hotel berhasil ditambahkan ke Travel Order ${existingTO.to_code}`,
       data: {
         travelOrderId: existingTO.id,
         toCode: existingTO.to_code,
@@ -129,15 +128,14 @@ export class TravelOrderService {
     };
   }
 
+  // 4. GET EXISTING ORDERS
   async getExistingOrders(searchQuery?: string, statusFilter?: string) {
     const rawData = await this.toRepo.findExistingOrders(
       searchQuery,
       statusFilter,
     );
 
-    // Mapping ke format ExistingTOItem lengkap untuk Vue Frontend
-    const formattedData = rawData.map((row) => {
-      // A. Formatter Status DB ke UI
+    return rawData.map((row) => {
       let statusUI:
         | "Menunggu Persetujuan Pejabat"
         | "Disetujui"
@@ -146,7 +144,6 @@ export class TravelOrderService {
       else if (row.status === "REJECTED" || row.status === "REVISION")
         statusUI = "Perlu Koreksi";
 
-      // B. Formatter Tanggal
       const dateObj = new Date(row.createdAt);
       const dateStr = dateObj.toLocaleDateString("id-ID", {
         day: "2-digit",
@@ -159,14 +156,12 @@ export class TravelOrderService {
       });
       const formattedDate = `${dateStr}, ${timeStr} WIB`;
 
-      // C. Formatter Rupiah Total Estimasi
       const formattedEstimate = new Intl.NumberFormat("id-ID", {
         style: "currency",
         currency: "IDR",
         maximumFractionDigits: 0,
       }).format(row.totalEstimateRaw || 0);
 
-      // D. Formatter Array Transport & Hotel Badges
       const transportsList: {
         type: "flight" | "train" | "hotel" | "bus" | "car";
         label: string;
@@ -185,10 +180,7 @@ export class TravelOrderService {
             labelText = `Mobil Dinas (${t.count} Kendaraan)`;
 
           if (labelText) {
-            transportsList.push({
-              type: t.type,
-              label: labelText,
-            });
+            transportsList.push({ type: t.type, label: labelText });
           }
         });
       }
@@ -200,7 +192,6 @@ export class TravelOrderService {
         });
       }
 
-      // 🟢 E. RETURN DATA LENGKAP BERSAMA SELURUH FIELD FORM
       return {
         id: row.id,
         toCode: row.toCode,
@@ -215,7 +206,6 @@ export class TravelOrderService {
         totalEstimate: formattedEstimate,
         transports: transportsList,
 
-        // 🟢 Field Pendukung Form yang sebelumnya hilang:
         approverId: row.approverId || "",
         approverNama: row.approverNama || "",
         budgetId: row.budgetId || "",
@@ -227,9 +217,5 @@ export class TravelOrderService {
         remainingBudget: Number(row.remainingBudget) || 0,
       };
     });
-
-    return formattedData;
   }
-
- 
 }

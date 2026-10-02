@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-// 🟢 1. Preprocessor untuk mengubah string kosong/whitespace menjadi null (untuk validasi UUID)
+// Helper Preprocessor untuk UUID null/empty
 const nullableUuid = z.preprocess(
   (val) => (typeof val === "string" && val.trim() === "" ? null : val),
   z.string().uuid("Invalid UUID").nullable().optional(),
 );
 
-// 🟢 2. Preprocessor untuk membersihkan akhiran " WIB", " WITA", " WIT" agar kompatibel dengan PostgreSQL TIME
+// Helper Preprocessor untuk membersihkan akhiran timezone pada waktu (misal: "08:30 WIB" -> "08:30")
 const cleanTimeFormat = z.preprocess(
   (val) => {
     if (typeof val === "string") {
@@ -25,9 +25,26 @@ const cleanTimeFormatNullable = z.preprocess((val) => {
 }, z.string().nullable().optional());
 
 // ====================================================================
-// A. SCHEMA ITEM TRANSPORTASI (Multiple Travellers)
+// A. SCHEMA TAHAP 0: PEMBUATAN HEADER TRAVEL ORDER MANDIRI
+// ====================================================================
+export const CreateStandaloneTravelOrderSchema = z.object({
+  toCode: z.string().optional().nullable(),
+  activityName: z.string().min(1, "Nama kegiatan/dinas wajib diisi"),
+  unitKerjaKode: z.string().optional().nullable(),
+  unitKerjaNama: z.string().optional().nullable(),
+  programKerja: z.string().optional().nullable(),
+  approverId: z.string().uuid("Approver ID wajib diisi & berbentuk UUID valid"),
+  budgetId: z.string().uuid("Budget ID wajib diisi & berbentuk UUID valid"),
+  sprinNumber: z.string().min(1, "No. Surat Perintah (Sprin) wajib diisi"),
+  sprinDetail: z.string().min(1, "Detail uraian tugas wajib diisi"),
+  notes: z.string().optional().nullable(),
+});
+
+// ====================================================================
+// B. SCHEMA ITEM TRANSPORTASI (Pesawat/Kereta/Bus/Mobil)
 // ====================================================================
 export const TransportItemSchema = z.object({
+  transportType: z.enum(["flight", "train", "bus", "car"]).default("flight"),
   category: z.enum(["INTERNAL", "EKSTERNAL"]).default("INTERNAL"),
   userId: nullableUuid,
   name: z.string().min(1, "Nama traveller wajib diisi"),
@@ -35,7 +52,6 @@ export const TransportItemSchema = z.object({
   jabatanOrInstansi: z.string().optional().nullable(),
   phone: z.string().min(1, "No HP wajib diisi"),
 
-  // Rute & Teks Informasi
   route: z.string().optional().nullable(),
   originCity: z.string().optional().nullable(),
   destCity: z.string().optional().nullable(),
@@ -44,7 +60,7 @@ export const TransportItemSchema = z.object({
 
   // Departure Leg (Pergi)
   departureDate: z.string().min(1, "Tanggal berangkat wajib diisi"),
-  departureTime: cleanTimeFormat, // 👈 Otomatis mengubah "08:30 WIB" -> "08:30"
+  departureTime: cleanTimeFormat,
   departureInfo: z.string().optional().nullable(),
   maskapai: z.string().optional().nullable(),
   kelas: z.string().optional().nullable(),
@@ -54,18 +70,25 @@ export const TransportItemSchema = z.object({
   // Return Leg (Pulang)
   isRoundTrip: z.boolean().default(true),
   returnDate: z.string().optional().nullable(),
-  returnTime: cleanTimeFormatNullable, // 👈 Otomatis membersihkan jam pulang
+  returnTime: cleanTimeFormatNullable,
   returnInfo: z.string().optional().nullable(),
   returnMaskapai: z.string().optional().nullable(),
   returnKelas: z.string().optional().nullable(),
   returnTransportId: z.number().optional().nullable(),
   returnTransportClassId: z.number().optional().nullable(),
 
-  price: z.number().default(0),
+  price: z.number().min(0).default(0),
+});
+
+export const AddTransportToExistingTOSchema = z.object({
+  travelOrderId: z.string().min(1, "Travel Order ID / Code wajib diisi"),
+  travellers: z
+    .array(TransportItemSchema)
+    .min(1, "Minimal tambahkan 1 item transportasi"),
 });
 
 // ====================================================================
-// B. SCHEMA AKOMODASI HOTEL
+// C. SCHEMA AKOMODASI HOTEL
 // ====================================================================
 export const HotelGuestItemSchema = z.object({
   roomNumber: z.string().default("Kamar 01"),
@@ -93,44 +116,25 @@ export const HotelItemSchema = z.object({
   guests: z.array(HotelGuestItemSchema).optional().default([]),
 });
 
-// ====================================================================
-// C. SCHEMA PAYLOAD UTAMA
-// ====================================================================
-export const CreateTravelOrderDTOSchema = z.object({
-  existingToOption: z.string().optional().nullable(),
-  toCode: z.string().optional().nullable(),
-  activityName: z.string().min(1, "Nama kegiatan wajib diisi"),
-  unitKerjaKode: z.string().optional().nullable(),
-  unitKerjaNama: z.string().optional().nullable(),
-  programKerja: z.string().optional().nullable(),
-  approverNama: z.string().optional().nullable(),
-
-  approverId: nullableUuid,
-  budgetAccount: z.string().optional().nullable(),
-  budgetId: nullableUuid,
-
-  sprinNumber: z.string().min(1, "No. Sprin wajib diisi"),
-  sprinDetail: z.string().min(1, "Detail kegiatan wajib diisi"),
-  notes: z.string().optional().nullable(),
-
-  travellers: z
-    .array(TransportItemSchema)
-    .min(1, "Minimal tambahkan 1 traveller"),
-});
-
-export const CreateHotelOrderDTOSchema = z.object({
+export const AddHotelToExistingTOSchema = z.object({
   travelOrderId: z.string().min(1, "Travel Order ID / Code wajib diisi"),
   hotels: z
     .array(HotelItemSchema)
     .min(1, "Minimal tambahkan 1 pemesanan hotel"),
 });
 
-
 // ====================================================================
 // D. EXPORT INFERRED TYPES
 // ====================================================================
+export type CreateStandaloneTravelOrderDTO = z.infer<
+  typeof CreateStandaloneTravelOrderSchema
+>;
 export type TransportItemDTO = z.infer<typeof TransportItemSchema>;
+export type AddTransportToExistingTODTO = z.infer<
+  typeof AddTransportToExistingTOSchema
+>;
 export type HotelGuestItemDTO = z.infer<typeof HotelGuestItemSchema>;
 export type HotelItemDTO = z.infer<typeof HotelItemSchema>;
-export type CreateTravelOrderDTO = z.infer<typeof CreateTravelOrderDTOSchema>;
-export type CreateHotelOrderDTO = z.infer<typeof CreateHotelOrderDTOSchema>;
+export type AddHotelToExistingTODTO = z.infer<
+  typeof AddHotelToExistingTOSchema
+>;

@@ -34,20 +34,21 @@ const authMiddlewares = [
 // 🚀 ENDPOINTS TRAVEL ORDER
 // ==========================================
 
-// 1. Endpoint Tahap 1: Pengajuan Transportasi Pesawat (TO Baru)
-router.post("/flight", authMiddlewares, toController.createFlightOrder);
+// 1. Buat Header Travel Order Mandiri
+router.post("/", authMiddlewares, toController.createTravelOrder);
 
-// 2. Endpoint Tahap 2: Pengajuan Akomodasi Hotel (Gabung ke TO Existing)
-router.post("/hotel", authMiddlewares, toController.createHotelOrder);
+// 2. Tambah Pemesanan Transportasi ke Travel Order Existing
+router.post("/transport", authMiddlewares, toController.addTransportOrder);
 
-// 3. Endpoint Get Existing Travel Orders
+// 3. Tambah Pemesanan Akomodasi Hotel ke Travel Order Existing
+router.post("/hotel", authMiddlewares, toController.addHotelOrder);
+
+// 4. Ambil Daftar Travel Order Existing (Untuk Modal Pilihan di FE)
 router.get(
   "/existing",
   [authenticateJWT, authorizeRoles("OFFICIAL_BOOKER", "SUPER_ADMIN")],
   toController.getExistingOrders,
 );
-
-
 
 // ==========================================
 // 🚀 ENDPOINTS REFERENCE & LOV
